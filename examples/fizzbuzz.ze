@@ -1,0 +1,57 @@
+map := fn arr f ->
+  res = [];
+  for item <- arr:
+    res ++ f item
+  res
+
+[1 .. 100].map fn i -> [(3,"Fizz"), (5, "Buzz")].map fn (m, s) -> 
+  if i % m == 0 then s else `{i}`
+|> join "\n" |> print
+
+map (reverse arr) f
+
+[1 .. 100] .map fn i -> [(3,"Fizz"), (5, "Buzz")] .map fn (m, s) -> 
+  if i % m == 0 then s else `{i}`
+.join "\n" .print
+
+map [1 .. 100], fn i -> 
+  map [(3,"Fizz"), (5, "Buzz")], fn (m, s) -> 
+    if i % m == 0 then:
+      s
+    else:
+      `{i}`
+.join "\n" .print
+
+[1 .. 100] .map fn i ->
+  [(3,"Fizz"), (5, "Buzz")] .map fn (m, s) -> if i % m == 0 then s else `{i}`
+.join "\n" .print
+
+[1 .. 100]
+.map fn i -> [(3,"Fizz"), (5, "Buzz")] .map fn (m, s) -> if i % m == 0 then s else `{i}`
+.join "\n"
+.print
+
+[1 .. 100]
+.map fn i -> 
+  [(3,"Fizz"), (5, "Buzz")] 
+  .map fn (m, s) -> 
+    if i % m == 0 then s else `{i}`
+.join "\n"
+.print
+
+for i <- [1 .. 100]:
+  part := "";
+  for (m,s) <- [(3,"Fizz"), (5, "Buzz")]:
+    part += if i % m == 0 then s else "";
+  println! if part .length > 0 then part else `{i}`
+
+main := fn n arr ->
+  map [1 .. 100], fn i ->
+    part := "";
+    for (m, s) <- arr:
+      part += if i % m == 0 then s else `{i}`
+    if part .length > 0 then part else `{i}`
+  .join "\n"
+
+100 .main [(3,"Fizz"), (5, "Buzz")] .print
+main 100 [(3,"Fizz"), (5, "Buzz")] .print

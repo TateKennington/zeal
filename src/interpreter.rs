@@ -28,7 +28,7 @@ impl Expr {
             Expr::Group(e) => e.interpret(),
             Expr::Binary(lhs, op, rhs) => Expr::interpret_binary(*lhs, op, *rhs),
             Expr::Unary(op, e) => Expr::interpret_unary(op, *e),
-            _ => todo!("Implement me"),
+            e => todo!("{e:?}"),
         }
     }
 

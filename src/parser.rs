@@ -64,13 +64,66 @@ impl Parser {
         Expr::Block(res)
     }
 
+    fn control_expression(&mut self) -> Expr {
+        let Some(curr) = self.peek() else {
+            panic!("Unexpected EOF")
+        };
+        match curr.token_type {
+            TokenType::While => {
+                self.advance();
+                let cond = self.expression();
+                if !self.matches(vec![TokenType::Colon]) {
+                    panic!("Expected colon after while condition")
+                }
+
+                if self.matches(vec![TokenType::BeginBlock]) {
+                    Expr::While(Box::new(cond), Box::new(self.block()))
+                } else {
+                    Expr::While(Box::new(cond), Box::new(self.expression()))
+                }
+            }
+            TokenType::If => {
+                self.advance();
+                let cond = self.expression();
+
+                if !self.matches(vec![TokenType::Colon]) {
+                    panic!("Expected colon after if condition: {:?}", self.peek())
+                }
+
+                let if_branch = if self.matches(vec![TokenType::BeginBlock]) {
+                    self.block()
+                } else {
+                    self.expression()
+                };
+
+                let else_branch = if self.matches(vec![TokenType::Else]) {
+                    if self.matches(vec![TokenType::BeginBlock]) {
+                        Some(Box::new(self.block()))
+                    } else {
+                        Some(Box::new(self.expression()))
+                    }
+                } else {
+                    None
+                };
+
+                Expr::If(Box::new(cond), Box::new(if_branch), else_branch)
+            }
+            _ => self.pipeline(),
+        }
+    }
+
     fn statement(&mut self) -> Expr {
         let mut expr = self.expression();
         match self.peek() {
             Some(Token {
                 token_type: TokenType::Colon,
                 ..
-            }) => expr = self.declaration(expr),
+            }) => {
+                if !matches!(expr, Expr::Literal(Value::Identifier(_))) {
+                    panic!("Invalid LHS of declaration {expr:?}")
+                }
+                expr = self.declaration(expr)
+            }
             Some(Token {
                 token_type: TokenType::Equal,
                 ..
@@ -78,6 +131,7 @@ impl Parser {
             _ => (),
         }
         if !self.matches(vec![TokenType::Semicolon])
+            && !self.check(TokenType::EndBlock)
             && !matches!(self.previous().token_type, TokenType::EndBlock)
         {
             panic!(
@@ -119,11 +173,11 @@ impl Parser {
     }
 
     fn expression(&mut self) -> Expr {
-        self.pipeline()
+        self.control_expression()
     }
 
     fn pipeline(&mut self) -> Expr {
-        let mut expr = self.equality();
+        let mut expr = self.logical_and();
         while self.matches(vec![TokenType::Pipeline]) {
             expr = match self.call() {
                 Expr::FunctionCall(e, mut args) => {
@@ -135,6 +189,16 @@ impl Parser {
                 }
                 _ => panic!("Expected function call in pipeline"),
             }
+        }
+        expr
+    }
+
+    fn logical_and(&mut self) -> Expr {
+        let mut expr = self.equality();
+        while self.matches(vec![TokenType::AndAnd]) {
+            let op = self.previous();
+            let rhs = self.equality();
+            expr = Expr::Binary(Box::new(expr), op, Box::new(rhs));
         }
         expr
     }
@@ -180,6 +244,7 @@ impl Parser {
             TokenType::Star,
             TokenType::Slash,
             TokenType::SlashSlash,
+            TokenType::Mod,
         ]) {
             let op = self.previous();
             let rhs = self.unary();
@@ -265,7 +330,8 @@ impl Parser {
             }
             TokenType::Plus => Expr::Literal(Value::Identifier(String::from("+"))),
             TokenType::Fn => self.function_decl(),
-            t => panic!("Unexpected token type {t:?}"),
+            TokenType::Print => Expr::BuiltinFunction(self.previous(), self.arguments()),
+            t => panic!("Unexpected token {:?}", self.previous()),
         }
     }
 
@@ -311,4 +377,7 @@ pub enum Expr {
     Declaration(Box<Expr>, Option<Box<Expr>>),
     Assignment(Box<Expr>, Box<Expr>),
     Block(Vec<Expr>),
+    While(Box<Expr>, Box<Expr>),
+    If(Box<Expr>, Box<Expr>, Option<Box<Expr>>),
+    BuiltinFunction(Token, Vec<Expr>),
 }

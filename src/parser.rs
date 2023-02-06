@@ -97,7 +97,10 @@ impl Parser {
                 };
 
                 let else_branch = if self.matches(vec![TokenType::Else]) {
-                    if self.matches(vec![TokenType::BeginBlock]) {
+                    if self.matches(vec![TokenType::Colon]) {
+                        if !self.matches(vec![TokenType::BeginBlock]) {
+                            panic!("Expected block after else")
+                        }
                         Some(Box::new(self.block()))
                     } else {
                         Some(Box::new(self.expression()))
@@ -364,6 +367,17 @@ pub enum Value {
     Bool(bool),
     Identifier(String),
     Lambda(Vec<Expr>),
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Value::Int(x), Value::Int(other)) => x == other,
+            (Value::Bool(x), Value::Bool(other)) => x == other,
+            (Value::String(x), Value::String(other)) => x == other,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

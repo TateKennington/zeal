@@ -5,7 +5,7 @@ use parser::{Expr, Parser, Value};
 use scanner::{Scanner, Token};
 
 mod interpreter;
-mod parser;
+pub mod parser;
 mod scanner;
 
 pub struct Compiler {

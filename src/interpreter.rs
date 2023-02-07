@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, io::Write};
 
 use crate::{
     parser::{Expr, Value},
@@ -35,33 +35,18 @@ impl Environment {
     pub fn define(&mut self, identifier: String, value: Value) {
         self.values.insert(identifier, value);
     }
-
-    pub fn push(&mut self) {
-        // Self {
-        //     parent: Some(Box::new(self)),
-        //     values: HashMap::default(),
-        // }
-
-        self.parent = Some(Box::new(self.clone()));
-        self.values = HashMap::default();
-    }
-
-    pub fn pop(&mut self) {
-        let parent = std::mem::take(&mut self.parent);
-        let parent = parent.expect("Failed to pop scope: No parent");
-        self.parent = parent.parent;
-        self.values = parent.values;
-    }
 }
 
-pub struct Interpreter {
+pub struct Interpreter<'a, T: Write> {
     environment: Environment,
+    output: &'a mut T,
 }
 
-impl Interpreter {
-    pub fn new() -> Self {
+impl<'a, T: Write> Interpreter<'a, T> {
+    pub fn new(output: &'a mut T) -> Self {
         Self {
             environment: Environment::default(),
+            output,
         }
     }
 
@@ -96,9 +81,12 @@ impl Interpreter {
             Expr::Assignment(lhs, value) => self.interpret_assignment(*lhs, *value),
             Expr::While(cond, body) => self.interpret_while(*cond, *body),
             Expr::Block(exprs) => {
-                self.environment.push();
+                let new_env = Environment::default();
+                self.environment.parent =
+                    Some(Box::new(std::mem::replace(&mut self.environment, new_env)));
                 self.interpret(exprs);
-                self.environment.pop();
+                self.environment = *std::mem::take(&mut self.environment.parent)
+                    .expect("Must have parent environment");
                 Value::Bool(false)
             }
             Expr::If(cond, true_branch, false_branch) => {
@@ -130,7 +118,7 @@ impl Interpreter {
             .collect();
 
         match token.token_type {
-            TokenType::Print => println!("{args:?}"),
+            TokenType::Print => writeln!(self.output, "{args:?}").expect("Failed to write output"),
             _ => panic!("Unknown builtin {token:?}"),
         };
         Value::Bool(false)
@@ -211,11 +199,5 @@ impl Interpreter {
             }
             _ => panic!("Type error"),
         }
-    }
-}
-
-impl Default for Interpreter {
-    fn default() -> Self {
-        Self::new()
     }
 }

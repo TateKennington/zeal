@@ -1,4 +1,8 @@
-use std::{fs::read_to_string, io, path::Path};
+use std::{
+    fs::read_to_string,
+    io::{self, Write},
+    path::Path,
+};
 
 use interpreter::Interpreter;
 use parser::{Expr, Parser, Value};
@@ -8,18 +12,18 @@ mod interpreter;
 pub mod parser;
 mod scanner;
 
-pub struct Compiler {
+pub struct Compiler<'a, T: Write> {
     scanner: Scanner,
     parser: Parser,
-    interpreter: Interpreter,
+    interpreter: Interpreter<'a, T>,
 }
 
-impl Compiler {
-    pub fn new() -> Self {
+impl<'a, T: Write> Compiler<'a, T> {
+    pub fn new(output: &'a mut T) -> Self {
         Compiler {
             scanner: Scanner::default(),
             parser: Parser::default(),
-            interpreter: Interpreter::default(),
+            interpreter: Interpreter::new(output),
         }
     }
 
@@ -43,11 +47,5 @@ impl Compiler {
 
     pub fn evaluate(&mut self, expressions: Vec<Expr>) -> Vec<Value> {
         self.interpreter.interpret(expressions)
-    }
-}
-
-impl Default for Compiler {
-    fn default() -> Self {
-        Self::new()
     }
 }

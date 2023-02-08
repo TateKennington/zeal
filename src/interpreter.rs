@@ -93,8 +93,45 @@ impl<'a, T: Write> Interpreter<'a, T> {
                 self.interpret_if(*cond, *true_branch, false_branch.map(|e| *e))
             }
             Expr::BuiltinFunction(token, args) => self.interpret_builtin(token, args),
+            Expr::FunctionCall(id, args) => self.interpret_call(*id, args),
+            Expr::Lambda(params, body) => Value::Lambda(params, body, self.environment.clone()),
             e => todo!("{e:?}"),
         }
+    }
+
+    fn interpret_call(&mut self, id: Expr, args: Vec<Expr>) -> Value {
+        let id = self.interpret_expr(id);
+        let func = self.resolve_value(id);
+
+        let Value::Lambda(params, body, closure) = func else {
+            panic!("Error: Not a function")
+        };
+
+        let mut new_env = Environment {
+            parent: Some(Box::new(closure)),
+            ..Default::default()
+        };
+
+        params.iter().zip(args.iter()).for_each(|(param, arg)| {
+            let Value::Identifier(param) = self.interpret_expr(param.clone()) else {
+                panic!("Invalid function parameter")
+            };
+
+            let arg = self.interpret_expr(arg.clone());
+            let arg = self.resolve_value(arg);
+
+            new_env.define(param, arg)
+        });
+
+        let old_env = std::mem::replace(&mut self.environment, new_env);
+
+        let res = self
+            .interpret(body)
+            .pop()
+            .expect("TODO: Functions must have implicit return");
+        self.environment = old_env;
+
+        res
     }
 
     fn interpret_assignment(&mut self, lhs: Expr, value: Expr) -> Value {

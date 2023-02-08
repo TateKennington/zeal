@@ -1,4 +1,7 @@
-use crate::scanner::{Token, TokenType};
+use crate::{
+    interpreter::Environment,
+    scanner::{Token, TokenType},
+};
 
 pub struct Parser {
     tokens: Vec<Token>,
@@ -182,13 +185,17 @@ impl Parser {
     fn pipeline(&mut self) -> Expr {
         let mut expr = self.logical_and();
         while self.matches(vec![TokenType::Pipeline]) {
-            expr = match self.call() {
+            expr = match self.logical_and() {
                 Expr::FunctionCall(e, mut args) => {
                     args.insert(0, expr);
                     Expr::FunctionCall(e, args)
                 }
                 Expr::Literal(Value::Identifier(name)) => {
                     Expr::FunctionCall(Box::new(Expr::Literal(Value::Identifier(name))), vec![expr])
+                }
+                Expr::BuiltinFunction(op, mut args) => {
+                    args.insert(0, expr);
+                    Expr::BuiltinFunction(op, args)
                 }
                 _ => panic!("Expected function call in pipeline"),
             }
@@ -267,6 +274,10 @@ impl Parser {
 
     fn call(&mut self) -> Expr {
         let mut expr = self.primary();
+        if matches!(expr, Expr::Lambda(_, _)) {
+            return expr;
+        }
+
         loop {
             if self.matches(vec![TokenType::Dot]) {
                 let Token{token_type: TokenType::Identifier(name), ..} = self.advance() else{
@@ -334,22 +345,23 @@ impl Parser {
             TokenType::Plus => Expr::Literal(Value::Identifier(String::from("+"))),
             TokenType::Fn => self.function_decl(),
             TokenType::Print => Expr::BuiltinFunction(self.previous(), self.arguments()),
-            t => panic!("Unexpected token {:?}", self.previous()),
+            _ => panic!("Unexpected token {:?}", self.previous()),
         }
     }
 
     fn function_decl(&mut self) -> Expr {
+        let mut args = Vec::default();
         while !self.matches(vec![TokenType::ThinArrow]) {
-            self.primary();
+            args.push(self.primary());
         }
 
         if self.matches(vec![TokenType::BeginBlock]) {
             let Expr::Block(exprs) = self.block() else {
                 panic!("Expected block")
             };
-            Expr::Literal(Value::Lambda(exprs))
+            Expr::Lambda(args, exprs)
         } else {
-            Expr::Literal(Value::Lambda(vec![self.expression()]))
+            Expr::Lambda(args, vec![self.expression()])
         }
     }
 }
@@ -366,7 +378,7 @@ pub enum Value {
     Int(i32),
     Bool(bool),
     Identifier(String),
-    Lambda(Vec<Expr>),
+    Lambda(Vec<Expr>, Vec<Expr>, Environment),
 }
 
 impl PartialEq for Value {
@@ -394,4 +406,5 @@ pub enum Expr {
     While(Box<Expr>, Box<Expr>),
     If(Box<Expr>, Box<Expr>, Option<Box<Expr>>),
     BuiltinFunction(Token, Vec<Expr>),
+    Lambda(Vec<Expr>, Vec<Expr>),
 }

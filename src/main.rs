@@ -7,17 +7,16 @@ fn main() {
     let mut compiler = Compiler::new(&mut stdout);
     let tokens = compiler.scan_line(
         r#"
-        is_even := fn x -> x % 2 == 0;
-        is_even 1;
-        is_even 2;
-        (fn x -> x % 2 == 0) 3;
+        (fn -> 
+            print "hello"
+        )!;
         "#,
     );
-    println!("{tokens:?}");
+    //println!("{tokens:?}");
     let expr = compiler.parse(tokens);
-    println!("{expr:?}");
+    //println!("{expr:?}");
     let res = compiler.evaluate(expr);
-    println!("{res:?}")
+    //println!("{res:?}")
 }
 
 #[cfg(test)]
@@ -84,6 +83,63 @@ pub mod test_main {
         assert_eq!(
             output, 
             "[Int(0)]\n[Int(1)]\n[Int(10)]\n[Int(10)]\n[Int(11)]\n[Int(100)]\n[Int(11)]\n[Int(1)]\n"
+        )
+    }
+
+    #[test]
+    pub fn interprets_functions() {
+        let mut output = vec![];
+        let mut compiler = Compiler::new(&mut output);
+        let tokens = compiler.scan_line(
+            r#"
+            is_even := fn x -> x % 2 == 0;
+            is_even 1 |> print;
+            is_even 2 |> print;
+            (fn x -> x % 2 == 0) 3 |> print;
+            (fn x -> x % 2 == 0) 4 |> print;
+            "#,
+        );
+        let expr = compiler.parse(tokens);
+        compiler.evaluate(expr);
+
+        let output = String::from_utf8_lossy(&output);
+        assert_eq!(
+            output,
+            "[Bool(false)]\n[Bool(true)]\n[Bool(false)]\n[Bool(true)]\n"
+        )
+    }
+
+    #[test]
+    pub fn interprets_function_closures() {
+        let mut output = vec![];
+        let mut compiler = Compiler::new(&mut output);
+        let tokens = compiler.scan_line(
+            r#"
+            x := 0;
+            a := fn -> 
+                print x;
+                x = 1;
+                print x;
+            b := fn ->
+                print x;
+                x = 10;
+                print x;
+            print x;
+            x = 100;
+            print x;
+            a!;
+            print x;
+            b!;
+            print x;
+            "#,
+        );
+        let expr = compiler.parse(tokens);
+        compiler.evaluate(expr);
+
+        let output = String::from_utf8_lossy(&output);
+        assert_eq!(
+            output,
+            "[Int(0)]\n[Int(100)]\n[Int(0)]\n[Int(1)]\n[Int(100)]\n[Int(0)]\n[Int(10)]\n[Int(100)]\n"
         )
     }
 

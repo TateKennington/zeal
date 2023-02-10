@@ -18,6 +18,7 @@ pub enum TokenType {
     Semicolon,
     Colon,
     Star,
+    LineEnd,
 
     // One or two character tokens.
     Bang,
@@ -66,16 +67,16 @@ pub enum TokenType {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct Location {
+pub struct Location {
     line: usize,
-    col: usize,
+    pub col: usize,
     index: usize,
 }
 
 #[derive(Clone, Debug)]
 pub struct Token {
     pub token_type: TokenType,
-    location: Location,
+    pub location: Location,
 }
 
 impl Scanner {
@@ -121,6 +122,13 @@ impl Scanner {
         }
         self.open_block = None;
         self.block_levels.push(self.curr_loc.col);
+        while let Some(Token {
+            token_type: TokenType::LineEnd,
+            ..
+        }) = self.tokens.last()
+        {
+            self.tokens.pop();
+        }
         self.emit_token(TokenType::BeginBlock);
     }
 
@@ -201,6 +209,7 @@ impl Scanner {
             self.curr_loc.line += 1;
         }
         self.emit_closed_blocks();
+        self.emit_token(TokenType::EndOfFile)
     }
 
     pub fn scan(&mut self, line: String) -> Vec<Token> {
@@ -302,6 +311,7 @@ impl Scanner {
             let c = self.stream.chars().nth(self.curr_loc.index);
             match c {
                 Some('\n') => {
+                    self.emit_token(TokenType::LineEnd);
                     self.curr_loc.line += 1;
                     self.curr_loc.index += 1;
                     self.curr_loc.col = 0;

@@ -6,6 +6,7 @@ use crate::{
 pub struct Parser {
     tokens: Vec<Token>,
     index: usize,
+    col: usize,
 }
 
 impl Parser {
@@ -13,6 +14,7 @@ impl Parser {
         Parser {
             tokens: Vec::default(),
             index: 0,
+            col: 0,
         }
     }
 
@@ -20,6 +22,10 @@ impl Parser {
         self.tokens = tokens;
         let mut res = Vec::default();
         while self.peek().is_some() {
+            while self.matches(vec![TokenType::LineEnd]) {}
+            if self.matches(vec![TokenType::EndOfFile]) {
+                break;
+            }
             res.push(self.statement());
         }
         res
@@ -50,9 +56,31 @@ impl Parser {
         Some(self.tokens[self.index].clone())
     }
 
+    fn peek_next(&mut self) -> Option<Token> {
+        if self.index + 1 >= self.tokens.len() {
+            return None;
+        }
+        Some(self.tokens[self.index + 1].clone())
+    }
+
     fn matches(&mut self, tokens: Vec<TokenType>) -> bool {
         if tokens.iter().any(|t| self.check(t.clone())) {
             self.advance();
+            true
+        } else {
+            false
+        }
+    }
+
+    fn matchesAll(&mut self, tokens: Vec<TokenType>) -> bool {
+        if self.index + tokens.len() >= self.tokens.len() {
+            false
+        } else if tokens
+            .iter()
+            .enumerate()
+            .all(|(i, token)| *token == self.tokens[i + self.index].token_type)
+        {
+            self.index += tokens.len();
             true
         } else {
             false
@@ -119,6 +147,7 @@ impl Parser {
     }
 
     fn statement(&mut self) -> Expr {
+        self.col = self.peek().expect("Should have token").location.col;
         let mut expr = self.expression();
         match self.peek() {
             Some(Token {
@@ -136,8 +165,11 @@ impl Parser {
             }) => expr = self.assignment(expr),
             _ => (),
         }
-        if !self.matches(vec![TokenType::Semicolon])
-            && !self.check(TokenType::EndBlock)
+        if !self.matches(vec![
+            TokenType::Semicolon,
+            TokenType::LineEnd,
+            TokenType::EndOfFile,
+        ]) && !self.check(TokenType::EndBlock)
             && !matches!(self.previous().token_type, TokenType::EndBlock)
         {
             panic!(
@@ -183,9 +215,9 @@ impl Parser {
     }
 
     fn pipeline(&mut self) -> Expr {
-        let mut expr = self.logical_and();
+        let mut expr = self.logical_or();
         while self.matches(vec![TokenType::Pipeline]) {
-            expr = match self.logical_and() {
+            expr = match self.logical_or() {
                 Expr::FunctionCall(e, mut args) => {
                     args.insert(0, expr);
                     Expr::FunctionCall(e, args)
@@ -203,9 +235,29 @@ impl Parser {
         expr
     }
 
+    fn logical_or(&mut self) -> Expr {
+        let mut expr = self.logical_and();
+        while self.matches(vec![TokenType::OrOr])
+            || self
+                .peek_next()
+                .map_or(false, |token| self.col < token.location.col)
+                && self.matchesAll(vec![TokenType::LineEnd, TokenType::OrOr])
+        {
+            let op = self.previous();
+            let rhs = self.logical_and();
+            expr = Expr::Binary(Box::new(expr), op, Box::new(rhs));
+        }
+        expr
+    }
+
     fn logical_and(&mut self) -> Expr {
         let mut expr = self.equality();
-        while self.matches(vec![TokenType::AndAnd]) {
+        while self.matches(vec![TokenType::AndAnd])
+            || self
+                .peek_next()
+                .map_or(false, |token| self.col < token.location.col)
+                && self.matchesAll(vec![TokenType::LineEnd, TokenType::AndAnd])
+        {
             let op = self.previous();
             let rhs = self.equality();
             expr = Expr::Binary(Box::new(expr), op, Box::new(rhs));
@@ -345,7 +397,7 @@ impl Parser {
             TokenType::Plus => Expr::Literal(Value::Identifier(String::from("+"))),
             TokenType::Fn => self.function_decl(),
             TokenType::Print => Expr::BuiltinFunction(self.previous(), self.arguments()),
-            _ => panic!("Unexpected token {:?}", self.previous()),
+            t => panic!("Unexpected token {t:?}"),
         }
     }
 

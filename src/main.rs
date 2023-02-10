@@ -7,9 +7,7 @@ fn main() {
     let mut compiler = Compiler::new(&mut stdout);
     let tokens = compiler.scan_line(
         r#"
-        (fn -> 
-            print "hello"
-        )!;
+        
         "#,
     );
     //println!("{tokens:?}");
@@ -30,7 +28,7 @@ pub mod test_main {
         let mut compiler = Compiler::new(&mut output);
         let tokens = compiler.scan_line(
             r#"
-            i := 1;
+            i := 1
             while i <= 15:
                 if i % 3 == 0 && i % 5 == 0:
                     print "fizzbuzz"
@@ -40,7 +38,7 @@ pub mod test_main {
                     print "fizz"
                 else:
                     print i
-                i = i + 1;
+                i = i + 1
             "#,
         );
         let expr = compiler.parse(tokens);
@@ -59,21 +57,21 @@ pub mod test_main {
         let mut compiler = Compiler::new(&mut output);
         let tokens = compiler.scan_line(
             r#"
-                a := 0;
+                a := 0
                 if true:
-                    print a;
-                    a = a + 1;
-                    print a;
-                    a := 10;
-                    print a;
+                    print a
+                    a = a + 1
+                    print a
+                    a := 10
+                    print a
                     if true:
-                        print a;
-                        a = a + 1;
-                        print a;
-                        a := 100;
-                        print a;
-                    print a;
-                print a;
+                        print a
+                        a = a + 1
+                        print a
+                        a := 100
+                        print a
+                    print a
+                print a
             "#,
         );
         let expr = compiler.parse(tokens);
@@ -92,11 +90,11 @@ pub mod test_main {
         let mut compiler = Compiler::new(&mut output);
         let tokens = compiler.scan_line(
             r#"
-            is_even := fn x -> x % 2 == 0;
-            is_even 1 |> print;
-            is_even 2 |> print;
-            (fn x -> x % 2 == 0) 3 |> print;
-            (fn x -> x % 2 == 0) 4 |> print;
+            is_even := fn x -> x % 2 == 0
+            is_even 1 |> print
+            is_even 2 |> print
+            (fn x -> x % 2 == 0) 3 |> print
+            (fn x -> x % 2 == 0) 4 |> print
             "#,
         );
         let expr = compiler.parse(tokens);
@@ -110,27 +108,55 @@ pub mod test_main {
     }
 
     #[test]
+    pub fn interprets_implied_semicolons() {
+        let mut output = vec![];
+        let mut compiler = Compiler::new(&mut output);
+        let tokens = compiler.scan_line(
+        r#"
+        add := fn a b -> a + b
+        false
+            || true
+            && true |> print
+
+        add
+            1
+            1 |> print
+        "#.trim(),
+        );
+        println!("{tokens:?}");
+        let expr = compiler.parse(tokens);
+        compiler.evaluate(expr);
+
+        let output = String::from_utf8_lossy(&output);
+        assert_eq!(
+            output,
+            "[Bool(true)]\n[Int(2)]\n"
+        )
+    }
+
+    #[test]
     pub fn interprets_function_closures() {
         let mut output = vec![];
         let mut compiler = Compiler::new(&mut output);
         let tokens = compiler.scan_line(
             r#"
-            x := 0;
+            x := 0
             a := fn -> 
-                print x;
-                x = 1;
-                print x;
+                print x
+                x = 1
+                print x
             b := fn ->
-                print x;
-                x = 10;
-                print x;
-            print x;
-            x = 100;
-            print x;
-            a!;
-            print x;
-            b!;
-            print x;
+                print x
+                x = 10
+                print x
+            print x
+            x = 100
+            print x
+            a!
+            a!
+            print x
+            b!
+            print x
             "#,
         );
         let expr = compiler.parse(tokens);
@@ -139,7 +165,7 @@ pub mod test_main {
         let output = String::from_utf8_lossy(&output);
         assert_eq!(
             output,
-            "[Int(0)]\n[Int(100)]\n[Int(0)]\n[Int(1)]\n[Int(100)]\n[Int(0)]\n[Int(10)]\n[Int(100)]\n"
+            "[Int(0)]\n[Int(100)]\n[Int(0)]\n[Int(1)]\n[Int(1)]\n[Int(2)]\n[Int(100)]\n[Int(0)]\n[Int(10)]\n[Int(100)]\n"
         )
     }
 
@@ -149,11 +175,11 @@ pub mod test_main {
         let mut compiler = Compiler::new(&mut stdout);
         let tokens = compiler.scan_line(
             r#"
-        i := 1;
-        i + 1 == 2;
-        -i;
-        i = i + 1;
-        "#,
+            i := 1
+            i + 1 == 2
+            -i
+            i = i + 1
+            "#,
         );
         let expr = compiler.parse(tokens);
         let res = compiler.evaluate(expr);

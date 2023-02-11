@@ -4,6 +4,7 @@ pub struct Scanner {
     tokens: Vec<Token>,
     open_block: Option<Location>,
     block_levels: Vec<usize>,
+    line_start: Option<usize>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -91,6 +92,7 @@ impl Scanner {
             tokens: vec![],
             open_block: None,
             block_levels: Vec::default(),
+            line_start: None,
         }
     }
 
@@ -137,6 +139,7 @@ impl Scanner {
             if level <= &self.curr_loc.col {
                 break;
             }
+            self.line_start = None;
             self.block_levels.pop();
             self.emit_token(TokenType::EndBlock);
         }
@@ -204,16 +207,23 @@ impl Scanner {
     }
 
     fn emit_end_of_file(&mut self) {
-        if !self.curr_loc.col == 0 {
+        if self.curr_loc.col != 0 {
             self.curr_loc.col = 0;
             self.curr_loc.line += 1;
+        }
+        if self.line_start.is_some() {
+            self.emit_token(TokenType::Semicolon);
         }
         self.emit_closed_blocks();
         self.emit_token(TokenType::EndOfFile)
     }
 
     pub fn scan(&mut self, line: String) -> Vec<Token> {
-        self.stream = line;
+        self.stream = line
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
         while let Some(c) = self.next() {
             if !matches!(c, '\n' | ' ' | '\t' | '\r') {
                 if let Some(opening_loc) = self.open_block {
@@ -221,7 +231,14 @@ impl Scanner {
                         self.open_block = None;
                     } else {
                         self.emit_open_block();
+                        self.line_start = Some(self.curr_loc.col);
                     }
+                } else if let Some(line_start) = self.line_start {
+                    if line_start >= self.curr_loc.col {
+                        self.emit_token(TokenType::Semicolon);
+                    }
+                } else {
+                    self.line_start = Some(self.curr_loc.col);
                 }
 
                 if !self.block_levels.is_empty() {

@@ -116,12 +116,17 @@ pub mod test_main {
         add := fn a b -> a + b
         false
             || true
-            && true |> print
+            && true
+            |> print
 
         add
             1
             1 |> print
-        "#.trim(),
+        
+        add
+            add 1 1
+            add 1 1 |> print
+        "#,
         );
         println!("{tokens:?}");
         let expr = compiler.parse(tokens);

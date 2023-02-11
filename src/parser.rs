@@ -72,8 +72,8 @@ impl Parser {
         }
     }
 
-    fn matchesAll(&mut self, tokens: Vec<TokenType>) -> bool {
-        if self.index + tokens.len() >= self.tokens.len() {
+    fn matches_all(&mut self, tokens: Vec<TokenType>) -> bool {
+        if self.index + tokens.len() > self.tokens.len() {
             false
         } else if tokens
             .iter()
@@ -85,6 +85,10 @@ impl Parser {
         } else {
             false
         }
+    }
+
+    fn matches_over_line(&mut self, token: TokenType) -> bool {
+        self.matches(vec![token.clone()]) || self.matches_all(vec![TokenType::LineEnd, token])
     }
 
     fn block(&mut self) -> Expr {
@@ -165,11 +169,8 @@ impl Parser {
             }) => expr = self.assignment(expr),
             _ => (),
         }
-        if !self.matches(vec![
-            TokenType::Semicolon,
-            TokenType::LineEnd,
-            TokenType::EndOfFile,
-        ]) && !self.check(TokenType::EndBlock)
+        if !self.matches_over_line(TokenType::Semicolon)
+            && !self.matches_over_line(TokenType::EndOfFile)
             && !matches!(self.previous().token_type, TokenType::EndBlock)
         {
             panic!(
@@ -216,7 +217,7 @@ impl Parser {
 
     fn pipeline(&mut self) -> Expr {
         let mut expr = self.logical_or();
-        while self.matches(vec![TokenType::Pipeline]) {
+        while self.matches_over_line(TokenType::Pipeline) {
             expr = match self.logical_or() {
                 Expr::FunctionCall(e, mut args) => {
                     args.insert(0, expr);
@@ -241,7 +242,7 @@ impl Parser {
             || self
                 .peek_next()
                 .map_or(false, |token| self.col < token.location.col)
-                && self.matchesAll(vec![TokenType::LineEnd, TokenType::OrOr])
+                && self.matches_all(vec![TokenType::LineEnd, TokenType::OrOr])
         {
             let op = self.previous();
             let rhs = self.logical_and();
@@ -256,7 +257,7 @@ impl Parser {
             || self
                 .peek_next()
                 .map_or(false, |token| self.col < token.location.col)
-                && self.matchesAll(vec![TokenType::LineEnd, TokenType::AndAnd])
+                && self.matches_all(vec![TokenType::LineEnd, TokenType::AndAnd])
         {
             let op = self.previous();
             let rhs = self.equality();
@@ -397,7 +398,7 @@ impl Parser {
             TokenType::Plus => Expr::Literal(Value::Identifier(String::from("+"))),
             TokenType::Fn => self.function_decl(),
             TokenType::Print => Expr::BuiltinFunction(self.previous(), self.arguments()),
-            t => panic!("Unexpected token {t:?}"),
+            _ => panic!("Unexpected token {:?}", self.previous()),
         }
     }
 

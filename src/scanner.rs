@@ -1,6 +1,7 @@
 pub struct Scanner {
     stream: String,
     curr_loc: Location,
+    start_loc: Location,
     tokens: Vec<Token>,
     open_block: Option<Location>,
     block_levels: Vec<usize>,
@@ -89,6 +90,11 @@ impl Scanner {
                 index: 0,
                 line: 0,
             },
+            start_loc: Location {
+                col: 0,
+                index: 0,
+                line: 0,
+            },
             tokens: vec![],
             open_block: None,
             block_levels: Vec::default(),
@@ -99,8 +105,9 @@ impl Scanner {
     pub fn emit_token(&mut self, token_type: TokenType) {
         self.tokens.push(Token {
             token_type,
-            location: self.curr_loc,
-        })
+            location: self.start_loc,
+        });
+        self.start_loc = self.curr_loc;
     }
 
     pub fn check(&mut self, lexeme: char) -> bool {
@@ -139,7 +146,7 @@ impl Scanner {
             if level <= &self.curr_loc.col {
                 break;
             }
-            self.line_start = None;
+            self.line_start = Some(self.curr_loc.col);
             self.block_levels.pop();
             self.emit_token(TokenType::EndBlock);
         }
@@ -230,11 +237,17 @@ impl Scanner {
                     if self.curr_loc.line == opening_loc.line {
                         self.open_block = None;
                     } else {
-                        self.emit_open_block();
+                        if self.line_start.map_or(false, |x| x < self.curr_loc.col) {
+                            self.emit_open_block();
+                        } else {
+                            self.open_block = None;
+                            self.emit_token(TokenType::Semicolon);
+                        }
                         self.line_start = Some(self.curr_loc.col);
                     }
                 } else if let Some(line_start) = self.line_start {
                     if line_start >= self.curr_loc.col {
+                        self.line_start = Some(self.curr_loc.col);
                         self.emit_token(TokenType::Semicolon);
                     }
                 } else {
@@ -271,7 +284,10 @@ impl Scanner {
                     match id.as_str() {
                         //One or two character tokens
                         "!=" => self.emit_token(TokenType::BangEqual),
-                        "!" => self.emit_token(TokenType::Bang),
+                        "!" => {
+                            self.open_block = Some(self.curr_loc);
+                            self.emit_token(TokenType::Bang)
+                        }
                         "=" => self.emit_token(TokenType::Equal),
                         "==" => self.emit_token(TokenType::EqualEqual),
                         "<=" => self.emit_token(TokenType::LessEqual),
@@ -328,14 +344,18 @@ impl Scanner {
             let c = self.stream.chars().nth(self.curr_loc.index);
             match c {
                 Some('\n') => {
-                    self.emit_token(TokenType::LineEnd);
                     self.curr_loc.line += 1;
                     self.curr_loc.index += 1;
                     self.curr_loc.col = 0;
+                    self.start_loc.line += 1;
+                    self.start_loc.index += 1;
+                    self.start_loc.col = 0;
                 }
                 Some('\t') => {
                     self.curr_loc.index += 1;
                     self.curr_loc.col += 4;
+                    self.start_loc.index += 1;
+                    self.start_loc.col += 4;
                 }
                 Some(_) => {
                     self.curr_loc.col += 1;

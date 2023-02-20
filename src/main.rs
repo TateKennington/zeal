@@ -31,13 +31,13 @@ pub mod test_main {
             i := 1
             while i <= 15:
                 if i % 3 == 0 && i % 5 == 0:
-                    print "fizzbuzz"
+                    print! "fizzbuzz"
                 else if i % 5 == 0:
-                    print "buzz"
+                    print! "buzz"
                 else if i % 3 == 0:
-                    print "fizz"
+                    print! "fizz"
                 else:
-                    print i
+                    print! i
                 i = i + 1
             "#,
         );
@@ -59,19 +59,19 @@ pub mod test_main {
             r#"
                 a := 0
                 if true:
-                    print a
+                    print! a
                     a = a + 1
-                    print a
+                    print! a
                     a := 10
-                    print a
+                    print! a
                     if true:
-                        print a
+                        print! a
                         a = a + 1
-                        print a
+                        print! a
                         a := 100
-                        print a
-                    print a
-                print a
+                        print! a
+                    print! a
+                print! a
             "#,
         );
         let expr = compiler.parse(tokens);
@@ -91,10 +91,10 @@ pub mod test_main {
         let tokens = compiler.scan_line(
             r#"
             is_even := fn x -> x % 2 == 0
-            is_even 1 |> print
-            is_even 2 |> print
-            (fn x -> x % 2 == 0) 3 |> print
-            (fn x -> x % 2 == 0) 4 |> print
+            is_even! 1 |> print!
+            is_even! 2 |> print!
+            (fn x -> x % 2 == 0)! 3 |> print!
+            (fn x -> x % 2 == 0)! 4 |> print!
             "#,
         );
         let expr = compiler.parse(tokens);
@@ -117,25 +117,26 @@ pub mod test_main {
         false
             || true
             && true
-            |> print
+            |> print!
 
-        add
+        add!
             1
-            1 |> print
+            1 
+        |> print!
         
-        add
-            add 1 1
-            add 1 1 |> print
+        add!
+            add! 1 1
+            add! 1 1
+        |> print!
         "#,
         );
-        println!("{tokens:?}");
         let expr = compiler.parse(tokens);
         compiler.evaluate(expr);
 
         let output = String::from_utf8_lossy(&output);
         assert_eq!(
             output,
-            "[Bool(true)]\n[Int(2)]\n"
+            "[Bool(true)]\n[Int(2)]\n[Int(4)]\n"
         )
     }
 
@@ -147,21 +148,21 @@ pub mod test_main {
             r#"
             x := 0
             a := fn -> 
-                print x
+                print! x
                 x = 1
-                print x
+                print! x
             b := fn ->
-                print x
+                print! x
                 x = 10
-                print x
-            print x
+                print! x
+            print! x
             x = 100
-            print x
+            print! x
             a!
             a!
-            print x
+            print! x
             b!
-            print x
+            print! x
             "#,
         );
         let expr = compiler.parse(tokens);

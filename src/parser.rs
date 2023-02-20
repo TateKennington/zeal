@@ -171,7 +171,10 @@ impl Parser {
         }
         if !self.matches_over_line(TokenType::Semicolon)
             && !self.matches_over_line(TokenType::EndOfFile)
-            && !matches!(self.previous().token_type, TokenType::EndBlock)
+            && !matches!(
+                self.previous().token_type,
+                TokenType::EndBlock | TokenType::Semicolon
+            )
         {
             panic!(
                 "Expected semicolon, {:?} {:?}",
@@ -225,10 +228,6 @@ impl Parser {
                 }
                 Expr::Literal(Value::Identifier(name)) => {
                     Expr::FunctionCall(Box::new(Expr::Literal(Value::Identifier(name))), vec![expr])
-                }
-                Expr::BuiltinFunction(op, mut args) => {
-                    args.insert(0, expr);
-                    Expr::BuiltinFunction(op, args)
                 }
                 _ => panic!("Expected function call in pipeline"),
             }
@@ -337,7 +336,7 @@ impl Parser {
                     panic!("Expected name after dot");
                 };
                 expr = Expr::Get(Box::new(expr), name);
-            } else if self.matches(vec![TokenType::Bang]) || self.peek_argument() {
+            } else if self.matches(vec![TokenType::Bang]) {
                 let mut args = self.arguments();
                 if let Expr::Get(lhs, name) = expr {
                     expr = Expr::Literal(Value::Identifier(name));
@@ -351,26 +350,39 @@ impl Parser {
         expr
     }
 
-    fn peek_argument(&mut self) -> bool {
-        matches!(
-            self.peek(),
-            Some(Token {
-                token_type: TokenType::Identifier(_)
-                    | TokenType::LeftParen
-                    | TokenType::True
-                    | TokenType::False
-                    | TokenType::String(_)
-                    | TokenType::Int(_)
-                    | TokenType::Fn,
-                ..
-            })
-        )
-    }
-
     fn arguments(&mut self) -> Vec<Expr> {
         let mut args = Vec::default();
-        while self.peek_argument() {
-            args.push(self.primary());
+        if self.matches(vec![TokenType::BeginBlock]) {
+            while !self.matches(vec![TokenType::EndBlock]) {
+                args.push(self.logical_or());
+                if !self.matches(vec![TokenType::Semicolon])
+                    && !matches!(
+                        self.previous(),
+                        Token {
+                            token_type: TokenType::Semicolon,
+                            ..
+                        }
+                    )
+                {
+                    panic!(
+                        "Expected semicolon in function call block: {:?}",
+                        self.peek()
+                    )
+                }
+            }
+        } else {
+            while !self.matches(vec![TokenType::Semicolon])
+                && !matches!(
+                    self.peek(),
+                    Some(Token {
+                        token_type: TokenType::Pipeline,
+                        ..
+                    })
+                )
+            {
+                println!("{args:?}");
+                args.push(self.logical_or());
+            }
         }
         args
     }
@@ -397,7 +409,7 @@ impl Parser {
             }
             TokenType::Plus => Expr::Literal(Value::Identifier(String::from("+"))),
             TokenType::Fn => self.function_decl(),
-            TokenType::Print => Expr::BuiltinFunction(self.previous(), self.arguments()),
+            TokenType::Print => Expr::BuiltinFunction(self.previous()),
             _ => panic!("Unexpected token {:?}", self.previous()),
         }
     }
@@ -458,6 +470,6 @@ pub enum Expr {
     Block(Vec<Expr>),
     While(Box<Expr>, Box<Expr>),
     If(Box<Expr>, Box<Expr>, Option<Box<Expr>>),
-    BuiltinFunction(Token, Vec<Expr>),
+    BuiltinFunction(Token),
     Lambda(Vec<Expr>, Vec<Expr>),
 }

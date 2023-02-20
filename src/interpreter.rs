@@ -92,7 +92,6 @@ impl<'a, T: Write> Interpreter<'a, T> {
             Expr::If(cond, true_branch, false_branch) => {
                 self.interpret_if(*cond, *true_branch, false_branch.map(|e| *e))
             }
-            Expr::BuiltinFunction(token, args) => self.interpret_builtin(token, args),
             Expr::FunctionCall(id, args) => self.interpret_call(*id, args),
             Expr::Lambda(params, body) => Value::Lambda(params, body, self.environment.clone()),
             e => todo!("{e:?}"),
@@ -100,6 +99,10 @@ impl<'a, T: Write> Interpreter<'a, T> {
     }
 
     fn interpret_call(&mut self, id: Expr, args: Vec<Expr>) -> Value {
+        if let Expr::BuiltinFunction(builtin) = id {
+            return self.interpret_builtin(builtin, args);
+        }
+
         let id = self.interpret_expr(id);
         let func = self.resolve_value(id);
 
@@ -199,10 +202,10 @@ impl<'a, T: Write> Interpreter<'a, T> {
         let value = self.interpret_expr(e);
         let value = self.resolve_value(value);
 
-        match (op.token_type, value) {
+        match (&op.token_type, &value) {
             (TokenType::Minus, Value::Int(x)) => Value::Int(-x),
             (TokenType::Bang, Value::Bool(x)) => Value::Bool(!x),
-            _ => panic!("Type error"),
+            _ => panic!("Type error: {op:?} {value:?}"),
         }
     }
 

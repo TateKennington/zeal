@@ -1,3 +1,5 @@
+use std::{cell::RefCell, rc::Rc};
+
 use crate::{
     interpreter::Environment,
     scanner::{Token, TokenType},
@@ -380,7 +382,6 @@ impl Parser {
                     })
                 )
             {
-                println!("{args:?}");
                 args.push(self.logical_or());
             }
         }
@@ -443,7 +444,7 @@ pub enum Value {
     Int(i32),
     Bool(bool),
     Identifier(String),
-    Lambda(Vec<Expr>, Vec<Expr>, Environment),
+    Lambda(Vec<Expr>, Vec<Expr>, Rc<RefCell<Environment>>),
 }
 
 impl PartialEq for Value {

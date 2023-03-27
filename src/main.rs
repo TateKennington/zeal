@@ -10,11 +10,8 @@ fn main() {
         
         "#,
     );
-    //println!("{tokens:?}");
     let expr = compiler.parse(tokens);
-    //println!("{expr:?}");
-    let res = compiler.evaluate(expr);
-    //println!("{res:?}")
+    compiler.evaluate(expr);
 }
 
 #[cfg(test)]
@@ -141,6 +138,38 @@ pub mod test_main {
     }
 
     #[test]
+    pub fn doesnt_leak_into_closures() {
+        let mut output = vec![];
+        let mut compiler = Compiler::new(&mut output);
+        let tokens = compiler.scan_line(
+            r#"
+            x := 0
+            y := 100
+            (fn ->
+                a := fn -> print! x
+                b := fn -> print! y
+
+                a!
+                b!
+
+                y := 10
+
+                a!
+                b!
+            )!
+            "#,
+        );
+        let expr = compiler.parse(tokens);
+        compiler.evaluate(expr);
+
+        let output = String::from_utf8_lossy(&output);
+        assert_eq!(
+            output,
+            "[Int(0)]\n[Int(100)]\n[Int(0)]\n[Int(100)]\n"
+        )
+    }
+
+    #[test]
     pub fn interprets_function_closures() {
         let mut output = vec![];
         let mut compiler = Compiler::new(&mut output);
@@ -171,7 +200,7 @@ pub mod test_main {
         let output = String::from_utf8_lossy(&output);
         assert_eq!(
             output,
-            "[Int(0)]\n[Int(100)]\n[Int(0)]\n[Int(1)]\n[Int(1)]\n[Int(2)]\n[Int(100)]\n[Int(0)]\n[Int(10)]\n[Int(100)]\n"
+            "[Int(0)]\n[Int(100)]\n[Int(100)]\n[Int(1)]\n[Int(1)]\n[Int(1)]\n[Int(1)]\n[Int(1)]\n[Int(10)]\n[Int(10)]\n"
         )
     }
 

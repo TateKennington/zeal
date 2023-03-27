@@ -1,4 +1,4 @@
-use std::{collections::HashMap, io::Write};
+use std::{cell::RefCell, collections::HashMap, io::Write, rc::Rc};
 
 use crate::{
     parser::{Expr, Value},
@@ -7,16 +7,16 @@ use crate::{
 
 #[derive(Clone, Debug, Default)]
 pub struct Environment {
-    parent: Option<Box<Environment>>,
+    parent: Option<Rc<RefCell<Environment>>>,
     values: HashMap<String, Value>,
 }
 
 impl Environment {
-    pub fn get(&self, identifier: &str) -> Option<&Value> {
-        self.values.get(identifier).or_else(|| {
+    pub fn get(&self, identifier: &str) -> Option<Value> {
+        self.values.get(identifier).cloned().or_else(|| {
             self.parent
                 .as_ref()
-                .and_then(|parent| parent.get(identifier))
+                .and_then(|parent| parent.borrow().get(identifier))
         })
     }
 
@@ -26,7 +26,7 @@ impl Environment {
                 .parent
                 .as_mut()
                 .unwrap_or_else(|| panic!("Error assigning to undefined variable: {identifier:?}"));
-            parent.set(identifier, value);
+            parent.borrow_mut().set(identifier, value);
         } else {
             self.values.insert(identifier, value);
         }
@@ -38,14 +38,14 @@ impl Environment {
 }
 
 pub struct Interpreter<'a, T: Write> {
-    environment: Environment,
+    environment: Rc<RefCell<Environment>>,
     output: &'a mut T,
 }
 
 impl<'a, T: Write> Interpreter<'a, T> {
     pub fn new(output: &'a mut T) -> Self {
         Self {
-            environment: Environment::default(),
+            environment: Rc::new(RefCell::new(Environment::default())),
             output,
         }
     }
@@ -63,6 +63,7 @@ impl<'a, T: Write> Interpreter<'a, T> {
     pub fn resolve_value(&mut self, value: Value) -> Value {
         if let Value::Identifier(identifier) = value {
             self.environment
+                .borrow()
                 .get(&identifier)
                 .unwrap_or_else(|| panic!("Undefined Variable {identifier:?}"))
                 .clone()
@@ -81,12 +82,14 @@ impl<'a, T: Write> Interpreter<'a, T> {
             Expr::Assignment(lhs, value) => self.interpret_assignment(*lhs, *value),
             Expr::While(cond, body) => self.interpret_while(*cond, *body),
             Expr::Block(exprs) => {
-                let new_env = Environment::default();
-                self.environment.parent =
-                    Some(Box::new(std::mem::replace(&mut self.environment, new_env)));
+                let new_env = Environment {
+                    parent: Some(self.environment.clone()),
+                    ..Default::default()
+                };
+                let old_env = self.environment.clone();
+                self.environment = Rc::new(RefCell::new(new_env));
                 self.interpret(exprs);
-                self.environment = *std::mem::take(&mut self.environment.parent)
-                    .expect("Must have parent environment");
+                self.environment = old_env;
                 Value::Bool(false)
             }
             Expr::If(cond, true_branch, false_branch) => {
@@ -111,7 +114,7 @@ impl<'a, T: Write> Interpreter<'a, T> {
         };
 
         let mut new_env = Environment {
-            parent: Some(Box::new(closure)),
+            parent: Some(closure),
             ..Default::default()
         };
 
@@ -126,12 +129,14 @@ impl<'a, T: Write> Interpreter<'a, T> {
             new_env.define(param, arg)
         });
 
-        let old_env = std::mem::replace(&mut self.environment, new_env);
+        let old_env = self.environment.clone();
+        self.environment = Rc::new(RefCell::new(new_env));
 
         let res = self
             .interpret(body)
             .pop()
             .expect("TODO: Functions must have implicit return");
+
         self.environment = old_env;
 
         res
@@ -145,7 +150,7 @@ impl<'a, T: Write> Interpreter<'a, T> {
         let value = self.interpret_expr(value);
         let value = self.resolve_value(value);
 
-        self.environment.set(identifier, value.clone());
+        self.environment.borrow_mut().set(identifier, value.clone());
 
         value
     }
@@ -194,7 +199,9 @@ impl<'a, T: Write> Interpreter<'a, T> {
         let Value::Identifier(identifier) = self.interpret_expr(lhs) else {
             panic!("Invalid LHS of declaration")
         };
-        self.environment.define(identifier, init.clone());
+        self.environment
+            .borrow_mut()
+            .define(identifier, init.clone());
         init
     }
 

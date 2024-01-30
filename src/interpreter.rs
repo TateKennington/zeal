@@ -20,20 +20,20 @@ impl Environment {
         })
     }
 
-    pub fn set(&mut self, identifier: String, value: Value) {
-        if !self.values.contains_key(&identifier) {
+    pub fn set(&mut self, identifier: &str, value: Value) {
+        if !self.values.contains_key(identifier) {
             let parent = self
                 .parent
                 .as_mut()
                 .unwrap_or_else(|| panic!("Error assigning to undefined variable: {identifier:?}"));
             parent.borrow_mut().set(identifier, value);
         } else {
-            self.values.insert(identifier, value);
+            self.values.insert(identifier.to_string(), value);
         }
     }
 
-    pub fn define(&mut self, identifier: String, value: Value) {
-        self.values.insert(identifier, value);
+    pub fn define(&mut self, identifier: &str, value: Value) {
+        self.values.insert(identifier.to_string(), value);
     }
 }
 
@@ -53,34 +53,19 @@ impl<'a, T: Write> Interpreter<'a, T> {
     pub fn interpret(&mut self, mut exprs: Vec<Expr>) -> Vec<Value> {
         exprs
             .drain(..)
-            .map(|expr| {
-                let val = self.interpret_expr(expr);
-                self.resolve_value(val)
-            })
+            .map(|expr| self.interpret_expr(&expr))
             .collect()
     }
 
-    pub fn resolve_value(&mut self, value: Value) -> Value {
-        if let Value::Identifier(identifier) = value {
-            self.environment
-                .borrow()
-                .get(&identifier)
-                .unwrap_or_else(|| panic!("Undefined Variable {identifier:?}"))
-                .clone()
-        } else {
-            value
-        }
-    }
-
-    pub fn interpret_expr(&mut self, expr: Expr) -> Value {
+    pub fn interpret_expr(&mut self, expr: &Expr) -> Value {
         match expr {
-            Expr::Literal(value) => value,
-            Expr::Group(e) => self.interpret_expr(*e),
-            Expr::Binary(lhs, op, rhs) => self.interpret_binary(*lhs, op, *rhs),
-            Expr::Unary(op, e) => self.interpret_unary(op, *e),
-            Expr::Declaration(lhs, init) => self.interpret_decl(*lhs, init.map(|e| *e)),
-            Expr::Assignment(lhs, value) => self.interpret_assignment(*lhs, *value),
-            Expr::While(cond, body) => self.interpret_while(*cond, *body),
+            Expr::Literal(value) => value.clone(),
+            Expr::Group(e) => self.interpret_expr(e),
+            Expr::Binary(lhs, op, rhs) => self.interpret_binary(lhs, op, rhs),
+            Expr::Unary(op, e) => self.interpret_unary(op, e),
+            Expr::Declaration(lhs, init) => self.interpret_decl(lhs, init),
+            Expr::Assignment(lhs, value) => self.interpret_assignment(lhs, value),
+            Expr::While(cond, body) => self.interpret_while(cond, body),
             Expr::Block(exprs) => {
                 let new_env = Environment {
                     parent: Some(self.environment.clone()),
@@ -88,26 +73,34 @@ impl<'a, T: Write> Interpreter<'a, T> {
                 };
                 let old_env = self.environment.clone();
                 self.environment = Rc::new(RefCell::new(new_env));
-                self.interpret(exprs);
+                self.interpret(exprs.clone());
                 self.environment = old_env;
                 Value::Bool(false)
             }
             Expr::If(cond, true_branch, false_branch) => {
-                self.interpret_if(*cond, *true_branch, false_branch.map(|e| *e))
+                self.interpret_if(cond, true_branch, false_branch)
             }
-            Expr::FunctionCall(id, args) => self.interpret_call(*id, args),
-            Expr::Lambda(params, body) => Value::Lambda(params, body, self.environment.clone()),
-            e => todo!("{e:?}"),
+            Expr::FunctionCall(id, args) => self.interpret_call(id, args),
+            Expr::Lambda(params, body) => {
+                Value::Lambda(params.clone(), body.clone(), self.environment.clone())
+            }
+            Expr::Get(_, _) => todo!(),
+            Expr::BuiltinFunction(_) => todo!(),
+            Expr::Identifier(identifier) => self
+                .environment
+                .borrow()
+                .get(&identifier)
+                .unwrap_or_else(|| panic!("Undefined Variable {identifier:?}"))
+                .clone(),
         }
     }
 
-    fn interpret_call(&mut self, id: Expr, args: Vec<Expr>) -> Value {
+    fn interpret_call(&mut self, id: &Expr, args: &Vec<Expr>) -> Value {
         if let Expr::BuiltinFunction(builtin) = id {
             return self.interpret_builtin(builtin, args);
         }
 
-        let id = self.interpret_expr(id);
-        let func = self.resolve_value(id);
+        let func = self.interpret_expr(id);
 
         let Value::Lambda(params, body, closure) = func else {
             panic!("Error: Not a function")
@@ -119,14 +112,10 @@ impl<'a, T: Write> Interpreter<'a, T> {
         };
 
         params.iter().zip(args.iter()).for_each(|(param, arg)| {
-            let Value::Identifier(param) = self.interpret_expr(param.clone()) else {
+            let Expr::Identifier(param) = param.clone() else {
                 panic!("Invalid function parameter")
             };
-
-            let arg = self.interpret_expr(arg.clone());
-            let arg = self.resolve_value(arg);
-
-            new_env.define(param, arg)
+            new_env.define(&param, self.interpret_expr(arg))
         });
 
         let old_env = self.environment.clone();
@@ -142,25 +131,19 @@ impl<'a, T: Write> Interpreter<'a, T> {
         res
     }
 
-    fn interpret_assignment(&mut self, lhs: Expr, value: Expr) -> Value {
-        let Value::Identifier(identifier) = self.interpret_expr(lhs) else {
+    fn interpret_assignment(&mut self, lhs: &Expr, value: &Expr) -> Value {
+        let Expr::Identifier(identifier) = lhs else {
             panic!("Invalid LHS of assignment")
         };
 
         let value = self.interpret_expr(value);
-        let value = self.resolve_value(value);
-
         self.environment.borrow_mut().set(identifier, value.clone());
 
         value
     }
 
-    fn interpret_builtin(&mut self, token: Token, args: Vec<Expr>) -> Value {
-        let args = self.interpret(args);
-        let args: Vec<Value> = args
-            .iter()
-            .map(|arg| self.resolve_value(arg.clone()))
-            .collect();
+    fn interpret_builtin(&mut self, token: &Token, args: &Vec<Expr>) -> Value {
+        let args = self.interpret(args.clone());
 
         match token.token_type {
             TokenType::Print => writeln!(self.output, "{args:?}").expect("Failed to write output"),
@@ -169,34 +152,42 @@ impl<'a, T: Write> Interpreter<'a, T> {
         Value::Bool(false)
     }
 
-    fn interpret_if(&mut self, cond: Expr, true_branch: Expr, false_branch: Option<Expr>) -> Value {
+    fn interpret_if(
+        &mut self,
+        cond: &Expr,
+        true_branch: &Expr,
+        false_branch: &Option<Box<Expr>>,
+    ) -> Value {
         let cond = self.interpret_expr(cond);
-        let cond = self.resolve_value(cond);
 
         if let Value::Bool(true) = cond {
             self.interpret_expr(true_branch)
         } else {
-            self.interpret_expr(false_branch.expect("TODO: if expression must have else"))
+            self.interpret_expr(
+                false_branch
+                    .as_ref()
+                    .expect("TODO: if expression must have else"),
+            )
         }
     }
 
-    fn interpret_while(&mut self, cond: Expr, body: Expr) -> Value {
-        let val = self.interpret_expr(cond.clone());
-        let mut cond_val = self.resolve_value(val);
-        while let Value::Bool(true) = cond_val {
-            self.interpret_expr(body.clone());
+    fn interpret_while(&mut self, cond: &Expr, body: &Expr) -> Value {
+        let mut val = self.interpret_expr(cond);
+        while let Value::Bool(true) = val {
+            self.interpret_expr(body);
 
-            let val = self.interpret_expr(cond.clone());
-            cond_val = self.resolve_value(val);
+            val = self.interpret_expr(cond);
         }
         Value::Bool(false)
     }
 
-    fn interpret_decl(&mut self, lhs: Expr, init: Option<Expr>) -> Value {
-        let init = self.interpret_expr(init.expect("TODO: declarations must have initial value"));
-        let init = self.resolve_value(init);
+    fn interpret_decl(&mut self, lhs: &Expr, init: &Option<Box<Expr>>) -> Value {
+        let init = self.interpret_expr(
+            init.as_ref()
+                .expect("TODO: declarations must have initial value"),
+        );
 
-        let Value::Identifier(identifier) = self.interpret_expr(lhs) else {
+        let Expr::Identifier(identifier) = lhs else {
             panic!("Invalid LHS of declaration")
         };
         self.environment
@@ -205,9 +196,8 @@ impl<'a, T: Write> Interpreter<'a, T> {
         init
     }
 
-    fn interpret_unary(&mut self, op: Token, e: Expr) -> Value {
+    fn interpret_unary(&mut self, op: &Token, e: &Expr) -> Value {
         let value = self.interpret_expr(e);
-        let value = self.resolve_value(value);
 
         match (&op.token_type, &value) {
             (TokenType::Minus, Value::Int(x)) => Value::Int(-x),
@@ -216,13 +206,11 @@ impl<'a, T: Write> Interpreter<'a, T> {
         }
     }
 
-    fn interpret_binary(&mut self, lhs: Expr, op: Token, rhs: Expr) -> Value {
+    fn interpret_binary(&mut self, lhs: &Expr, op: &Token, rhs: &Expr) -> Value {
         let lhs = self.interpret_expr(lhs);
-        let lhs = self.resolve_value(lhs);
         let rhs = self.interpret_expr(rhs);
-        let rhs = self.resolve_value(rhs);
 
-        match (op.token_type, lhs, rhs) {
+        match (&op.token_type, lhs, rhs) {
             (TokenType::Minus, Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs - rhs),
             (TokenType::Plus, Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs + rhs),
             (TokenType::Star, Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs * rhs),

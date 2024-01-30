@@ -160,7 +160,7 @@ impl Parser {
                 token_type: TokenType::Colon,
                 ..
             }) => {
-                if !matches!(expr, Expr::Literal(Value::Identifier(_))) {
+                if !matches!(expr, Expr::Identifier(_)) {
                     panic!("Invalid LHS of declaration {expr:?}")
                 }
                 expr = self.declaration(expr)
@@ -228,8 +228,8 @@ impl Parser {
                     args.insert(0, expr);
                     Expr::FunctionCall(e, args)
                 }
-                Expr::Literal(Value::Identifier(name)) => {
-                    Expr::FunctionCall(Box::new(Expr::Literal(Value::Identifier(name))), vec![expr])
+                Expr::Identifier(name) => {
+                    Expr::FunctionCall(Box::new(Expr::Identifier(name)), vec![expr])
                 }
                 _ => panic!("Expected function call in pipeline"),
             }
@@ -341,7 +341,7 @@ impl Parser {
             } else if self.matches(vec![TokenType::Bang]) {
                 let mut args = self.arguments();
                 if let Expr::Get(lhs, name) = expr {
-                    expr = Expr::Literal(Value::Identifier(name));
+                    expr = Expr::Identifier(name);
                     args.insert(0, *lhs);
                 }
                 expr = Expr::FunctionCall(Box::new(expr), args);
@@ -399,7 +399,7 @@ impl Parser {
 
         match self.advance().token_type {
             TokenType::String(value) => Expr::Literal(Value::String(value)),
-            TokenType::Identifier(value) => Expr::Literal(Value::Identifier(value)),
+            TokenType::Identifier(value) => Expr::Identifier(value),
             TokenType::Int(value) => Expr::Literal(Value::Int(value)),
             TokenType::LeftParen => {
                 let expr = self.expression();
@@ -408,7 +408,7 @@ impl Parser {
                 }
                 Expr::Group(Box::new(expr))
             }
-            TokenType::Plus => Expr::Literal(Value::Identifier(String::from("+"))),
+            TokenType::Plus => Expr::Identifier(String::from("+")),
             TokenType::Fn => self.function_decl(),
             TokenType::Print => Expr::BuiltinFunction(self.previous()),
             _ => panic!("Unexpected token {:?}", self.previous()),
@@ -443,7 +443,6 @@ pub enum Value {
     String(String),
     Int(i32),
     Bool(bool),
-    Identifier(String),
     Lambda(Vec<Expr>, Vec<Expr>, Rc<RefCell<Environment>>),
 }
 
@@ -473,4 +472,5 @@ pub enum Expr {
     If(Box<Expr>, Box<Expr>, Option<Box<Expr>>),
     BuiltinFunction(Token),
     Lambda(Vec<Expr>, Vec<Expr>),
+    Identifier(String),
 }
